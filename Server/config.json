@@ -1,0 +1,16 @@
+{
+  "listen": "localhost:8080",
+  "key" : "edc58825a3e3e0cca17adf94fbc430ea33d46d0d8903257c35fc06716894a12d",
+  "users": [
+    {
+      "name": "Hirbod",
+      "color": "green",
+      "password" : "a"
+    },
+    {
+      "name": "Hirbod2",
+      "color": "red",
+      "password" : "b"
+    }
+  ]
+}
