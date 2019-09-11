@@ -1,4 +1,5 @@
 {
   "server": "localhost:8080",
-  "key" : "edc58825a3e3e0cca17adf94fbc430ea33d46d0d8903257c35fc06716894a12d"
+  "server_key" : "edc58825a3e3e0cca17adf94fbc430ea33d46d0d8903257c35fc06716894a12d",
+  "private_key" : "353d401b61099c9c7fff4293a3a88e462eea4b251c0754e4"
 }

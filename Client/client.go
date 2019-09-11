@@ -8,7 +8,6 @@ import (
 	"flag"
 	"fmt"
 	"github.com/gorilla/websocket"
-	"github.com/howeyc/gopass"
 	"github.com/marcusolsson/tui-go"
 	"golang.org/x/crypto/chacha20poly1305"
 	"golang.org/x/crypto/ssh/terminal"
@@ -20,8 +19,9 @@ import (
 )
 
 type config struct {
-	Server string `json:"server"`
-	Key string `json:"key"`
+	Server     string `json:"server"`
+	ServerKey  string `json:"server_key"`
+	PrivateKey string `json:"private_key"`
 }
 
 var Config config
@@ -56,7 +56,7 @@ func main() {
 			panic("Cannot read the config file. (Parse Error) " + err.Error())
 		}
 		//Set the server key
-		sKey, err := hex.DecodeString(Config.Key)
+		sKey, err := hex.DecodeString(Config.ServerKey)
 		if err != nil {
 			panic("Cannot convert Server key to hex: " + err.Error())
 		}
@@ -64,15 +64,12 @@ func main() {
 		if err != nil {
 			panic("Failed to instantiate XChaCha20-Poly1305:" + err.Error()) //This must be fatal
 		}
+		//Get the user key
+		Pass, err = hex.DecodeString(Config.PrivateKey)
+		if err != nil {
+			panic("Cannot convert private key to hex: " + err.Error())
+		}
 	}
-	//Ask the user for password
-	fmt.Println("Please enter your password:")
-	var err error
-	Pass, err = gopass.GetPasswdMasked()
-	if err != nil {
-		log.Fatal("Error reading the password:",err.Error())
-	}
-	Pass = Internal.Sha256(string(Pass))
 	//Connect to the server
 	u := url.URL{Scheme: "ws", Host: Config.Server, Path: "/"}
 
@@ -96,7 +93,6 @@ func main() {
 
 	history := tui.NewVBox()
 
-
 	historyScroll := tui.NewScrollArea(history)
 	historyScroll.SetAutoscrollToBottom(true)
 
@@ -116,11 +112,11 @@ func main() {
 
 	input.OnSubmit(func(e *tui.Entry) {
 		go func(m string) {
-			b,_ := json.Marshal(Internal.InputTemplate{Type:2,MSG:m})
+			b, _ := json.Marshal(Internal.InputTemplate{Type: 2, MSG: m})
 			b = aead.Seal(nil, Pass, b, nil)
-			err := c.WriteMessage(websocket.BinaryMessage,b)
-			if err != nil{
-				printOneLineMessage(history,"Cannot send message: "+err.Error(),"CLIENT","red")
+			err := c.WriteMessage(websocket.BinaryMessage, b)
+			if err != nil {
+				printOneLineMessage(history, "Cannot send message: "+err.Error(), "CLIENT", "red")
 			}
 		}(e.Text())
 		input.SetText("")
@@ -147,20 +143,20 @@ func main() {
 				log.Fatal("Error on reading message: " + err.Error())
 			}
 			message, err = aead.Open(nil, Pass, message, nil)
-			if err != nil {//Break the loop
-				printOneLineMessage(history,"Error decrypting message: "+ err.Error(),"CLIENT","red")
+			if err != nil { //Break the loop
+				printOneLineMessage(history, "Error decrypting message: "+err.Error(), "CLIENT", "red")
 				ui.Update(func() {})
 				continue //Or maybe break?
 			}
 			//Parse the data
 			var msg Internal.MSGTemplate
-			err = json.Unmarshal(message,&msg)
-			if err == nil{ //Ignore all the other data
-				if msg.From != "SERVER"{
-					printMessage(history,msg.MSG,msg.From,msg.Color)
+			err = json.Unmarshal(message, &msg)
+			if err == nil { //Ignore all the other data
+				if msg.From != "SERVER" {
+					printMessage(history, msg.MSG, msg.From, msg.Color)
 					ui.Update(func() {})
-				}else{
-					printOneLineMessage(history,msg.MSG,"SERVER",msg.Color)
+				} else {
+					printOneLineMessage(history, msg.MSG, "SERVER", msg.Color)
 					ui.Update(func() {})
 				}
 			}
@@ -168,22 +164,21 @@ func main() {
 	}()
 	//Send the hello message
 	go func() {
-		b,_:= json.Marshal(Internal.InputTemplate{
+		b, _ := json.Marshal(Internal.InputTemplate{
 			Type: 0,
 			MSG:  "",
 		})
 		//Encrypt Message
 		b = aead.Seal(nil, Pass, b, nil)
 		//Send the message
-		err := c.WriteMessage(websocket.BinaryMessage,b)
-		if err != nil{
-			log.Fatal("Error on sending hello:",err.Error())
-		}else{
-			printOneLineMessage(history,"Connected to " + c.RemoteAddr().String(),"CLIENT","blue")
+		err := c.WriteMessage(websocket.BinaryMessage, b)
+		if err != nil {
+			log.Fatal("Error on sending hello:", err.Error())
+		} else {
+			printOneLineMessage(history, "Connected to "+c.RemoteAddr().String(), "CLIENT", "blue")
 			ui.Update(func() {})
 		}
 	}()
-
 
 	//Run the TUI
 	if err := ui.Run(); err != nil {
@@ -192,15 +187,15 @@ func main() {
 	//Inform the server because of close
 	{
 		//Encrypt the data
-		b,_:= json.Marshal(Internal.InputTemplate{
+		b, _ := json.Marshal(Internal.InputTemplate{
 			Type: 1,
 			MSG:  "",
 		})
 		b = aead.Seal(nil, Pass, b, nil)
 		//Send the message
-		err := c.WriteMessage(websocket.BinaryMessage,b)
-		if err != nil{
-			log.Println("Error on sending by :",err.Error())
+		err := c.WriteMessage(websocket.BinaryMessage, b)
+		if err != nil {
+			log.Println("Error on sending by :", err.Error())
 		}
 	}
 	//Close the websocket
@@ -214,7 +209,7 @@ func main() {
 	}
 }
 
-func printOneLineMessage(history *tui.Box,Message,From,Color string)  {
+func printOneLineMessage(history *tui.Box, Message, From, Color string) {
 	lbl := tui.NewLabel(fmt.Sprintf("<%s>", From))
 	lbl.SetStyleName(Color)
 	history.Append(tui.NewHBox(
@@ -226,7 +221,7 @@ func printOneLineMessage(history *tui.Box,Message,From,Color string)  {
 }
 
 //Prints a message to tui
-func printMessage(history *tui.Box,Message,From,Color string)  {
+func printMessage(history *tui.Box, Message, From, Color string) {
 	//Get the width to wrap the text if needed
 	fd := int(os.Stdout.Fd())
 	width, _, err := terminal.GetSize(fd)
@@ -243,14 +238,14 @@ func printMessage(history *tui.Box,Message,From,Color string)  {
 		tui.NewSpacer(),
 	))
 	lbl = tui.NewLabel("> ")
-	lbl.SetStyleName("cyan")
-	if len(Message) <= width{
+	lbl.SetStyleName(Color)
+	if len(Message) <= width {
 		history.Append(tui.NewHBox(
 			lbl,
 			tui.NewLabel(Message),
 			tui.NewSpacer(),
 		))
-	}else{
+	} else {
 		x := Message[0:width]
 		history.Append(tui.NewHBox(
 			lbl,
@@ -258,15 +253,15 @@ func printMessage(history *tui.Box,Message,From,Color string)  {
 			tui.NewSpacer(),
 		))
 		i := 1
-		for ; i < len(Message) / width; i++{
-			x = Message[i * width:(i + 1) * width]
+		for ; i < len(Message)/width; i++ {
+			x = Message[i*width : (i+1)*width]
 			history.Append(tui.NewHBox(
 				lbl,
 				tui.NewLabel(x),
 				tui.NewSpacer(),
 			))
 		}
-		x = Message[i * width:]
+		x = Message[i*width:]
 		history.Append(tui.NewHBox(
 			lbl,
 			tui.NewLabel(x),

@@ -5,12 +5,12 @@
     {
       "name": "Hirbod",
       "color": "green",
-      "password" : "a"
+      "key" : "353d401b61099c9c7fff4293a3a88e462eea4b251c0754e4"
     },
     {
       "name": "Hirbod2",
       "color": "red",
-      "password" : "b"
+      "key" : "9afbbb5216425404ae3981ed8809703d7e5c2098f88676f6"
     }
   ]
 }

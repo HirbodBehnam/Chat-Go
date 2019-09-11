@@ -12,20 +12,22 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 
 	"github.com/gorilla/websocket"
 
 	"../Public"
 )
+
 type config struct {
 	Listen string `json:"listen"`
-	Key string `json:"key"`
-	Users []client
+	Key    string `json:"key"`
+	Users  []client
 }
 type client struct {
-	Name string `json:"name"`
+	Name  string `json:"name"`
 	Color string `json:"color"`
-	Key string `json:"password"`
+	Key   string `json:"key"`
 }
 type clientsS struct {
 	con *websocket.Conn
@@ -45,7 +47,8 @@ func main() {
 	{
 		configFileName := flag.String("config", "config.json", "The config filename")
 		help := flag.Bool("h", false, "Show help")
-		keyGenerate := flag.Bool("k",false,"Generate server key")
+		keyGenerate := flag.Bool("k", false, "Generate server key")
+		pKeyGenerate := flag.Bool("p", false, "Generate user key")
 		flag.Parse()
 
 		if *help {
@@ -56,11 +59,21 @@ func main() {
 			os.Exit(0)
 		}
 
-		if *keyGenerate{
+		if *keyGenerate {
 			b := make([]byte, 32)
 			_, err := rand.Read(b)
 			if err != nil {
-				panic("Error creating the keys: "+ err.Error())
+				panic("Error creating the keys: " + err.Error())
+			}
+			fmt.Println(hex.EncodeToString(b))
+			os.Exit(0)
+		}
+
+		if *pKeyGenerate {
+			b := make([]byte, 24)
+			_, err := rand.Read(b)
+			if err != nil {
+				panic("Error creating the keys: " + err.Error())
 			}
 			fmt.Println(hex.EncodeToString(b))
 			os.Exit(0)
@@ -87,14 +100,21 @@ func main() {
 		}
 		//Set all keys
 		keys = make([][]byte, len(Config.Users))
-		for i := range Config.Users{
-			keys[i] = Internal.Sha256(Config.Users[i].Key)
+		for i := range Config.Users {
+			decoded, err := hex.DecodeString(Config.Users[i].Key)
+			if err != nil {
+				panic("Cannot parse the key of user " + Config.Users[i].Name + "; " + err.Error())
+			}
+			if len(decoded) != 24 {
+				panic("Cannot parse the key of user " + Config.Users[i].Name + "; The length of the key is " + strconv.FormatInt(int64(len(decoded)), 10))
+			}
+			keys[i] = decoded
 		}
 	}
 	http.HandleFunc("/", server)
+	log.Println("Starting to listen on", Config.Listen)
 	log.Fatal(http.ListenAndServe(Config.Listen, nil))
 }
-
 
 func server(w http.ResponseWriter, r *http.Request) {
 	c, err := upgrader.Upgrade(w, r, nil)
@@ -102,7 +122,7 @@ func server(w http.ResponseWriter, r *http.Request) {
 		log.Print("upgrade:", err)
 		return
 	}
-	log.Println("Hello from",r.RemoteAddr)
+	log.Println("Hello from", r.RemoteAddr)
 
 	var User client
 	var indexOfUser int
@@ -112,13 +132,14 @@ func server(w http.ResponseWriter, r *http.Request) {
 		_, message, err := c.ReadMessage()
 		if err != nil {
 			log.Println("read:", err)
+			delete(clients, User.Name)
 			break
 		}
 		if User.Key == "" {
 			//Loop all the users
-			for i,v := range Config.Users{
+			for i, v := range Config.Users {
 				msg, err := aead.Open(nil, keys[i], message, nil)
-				if err == nil {//Break the loop
+				if err == nil { //Break the loop
 					User = v
 					message = msg
 					indexOfUser = i
@@ -126,11 +147,11 @@ func server(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			//Check if the user is found
-			if User.Key == ""{
-				log.Println("Invalid password or server key from:",r.RemoteAddr)
+			if User.Key == "" {
+				log.Println("Invalid password or server key from:", r.RemoteAddr)
 				return
 			}
-		}else{
+		} else {
 			message, err = aead.Open(nil, keys[indexOfUser], message, nil)
 			if err != nil { //How
 				log.Println(err.Error())
@@ -156,7 +177,7 @@ func server(w http.ResponseWriter, r *http.Request) {
 				b := aead.Seal(nil, i.key, j, nil)
 				//s := hex.EncodeToString()
 				//Send the data
-				err = i.con.WriteMessage(websocket.TextMessage,b)
+				err = i.con.WriteMessage(websocket.TextMessage, b)
 				if err != nil {
 					log.Println("write:", err)
 					continue
@@ -166,22 +187,20 @@ func server(w http.ResponseWriter, r *http.Request) {
 			delete(clients, User.Name)
 			j, _ := json.Marshal(Internal.MSGTemplate{MSG: User.Name + " has left the chat", From: "SERVER", Color: "red"})
 			for _, i := range clients {
-				/*if i.con == *c{ //Do not send this to the user itself
-					continue
-				}*/
 				//Encrypt the data
 				b := aead.Seal(nil, i.key, j, nil)
 				//s := hex.EncodeToString(b)
 				//Send the data
-				err = i.con.WriteMessage(websocket.BinaryMessage,b)
+				err = i.con.WriteMessage(websocket.BinaryMessage, b)
 				if err != nil {
 					log.Println("write:", err)
 					continue
 				}
 			}
+			log.Println(User.Name, "has left.")
 		case 2: //Send this to all active clients
-			j, _ := json.Marshal(Internal.MSGTemplate{MSG: msg.MSG, From: User.Name, Color:  User.Color})
-			for _,i := range clients {
+			j, _ := json.Marshal(Internal.MSGTemplate{MSG: msg.MSG, From: User.Name, Color: User.Color})
+			for _, i := range clients {
 				//Encrypt the data
 				b := aead.Seal(nil, i.key, j, nil)
 				//s := hex.EncodeToString(b)
