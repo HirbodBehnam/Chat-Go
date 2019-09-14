@@ -133,6 +133,18 @@ func server(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			log.Println("read:", err)
 			delete(clients, User.Name)
+			j, _ := json.Marshal(Internal.MSGTemplate{MSG: User.Name + " has left the chat due to an error.", From: "SERVER", Color: "red"})
+			for _, i := range clients {
+				//Encrypt the data
+				b := aead.Seal(nil, i.key, j, nil)
+				//Send the data
+				err := i.con.WriteMessage(websocket.BinaryMessage, b)
+				if err != nil {
+					log.Println("write:", err)
+					continue
+				}
+			}
+			log.Println(User.Name, "has left. (Due to error:", err.Error(), ")")
 			break
 		}
 		if User.Key == "" {
@@ -175,9 +187,8 @@ func server(w http.ResponseWriter, r *http.Request) {
 			for _, i := range clients {
 				//Encrypt the data
 				b := aead.Seal(nil, i.key, j, nil)
-				//s := hex.EncodeToString()
 				//Send the data
-				err = i.con.WriteMessage(websocket.TextMessage, b)
+				err = i.con.WriteMessage(websocket.BinaryMessage, b)
 				if err != nil {
 					log.Println("write:", err)
 					continue
@@ -189,7 +200,6 @@ func server(w http.ResponseWriter, r *http.Request) {
 			for _, i := range clients {
 				//Encrypt the data
 				b := aead.Seal(nil, i.key, j, nil)
-				//s := hex.EncodeToString(b)
 				//Send the data
 				err = i.con.WriteMessage(websocket.BinaryMessage, b)
 				if err != nil {
@@ -203,7 +213,6 @@ func server(w http.ResponseWriter, r *http.Request) {
 			for _, i := range clients {
 				//Encrypt the data
 				b := aead.Seal(nil, i.key, j, nil)
-				//s := hex.EncodeToString(b)
 				//Send the message
 				err = i.con.WriteMessage(websocket.BinaryMessage, b)
 				if err != nil {
